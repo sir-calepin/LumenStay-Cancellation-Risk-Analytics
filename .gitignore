@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Do not publish source/model-ready data without permission
+/data/raw/*.csv
+/data/raw/*.xlsx
+/data/raw/*.xls
+/data/raw/*.parquet
+/data/processed/*.csv
+/data/processed/*.xlsx
+/data/processed/*.parquet
+
+# Preserve folder documentation/placeholders
+!/data/raw/README.md
+!/data/raw/.gitkeep
+!/data/processed/.gitkeep
+!/data/processed/data_dictionary.md
+
+# Secrets
+.env
+*.env
+credentials.json
+service_account.json
+
+# Temporary files
+*.log
+*.tmp
