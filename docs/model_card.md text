@@ -1,0 +1,57 @@
+# Model Card: LumenStay Booking Cancellation Risk Model
+
+## Model
+
+LightGBM binary classifier.
+
+## Intended use
+
+Prioritize booking-time retention support and inventory-management actions.
+
+## Target
+
+`cancelled_flag`: 1 if reservation cancels before arrival; 0 otherwise.
+
+## Performance
+
+| Metric | Untouched test result |
+|---|---:|
+| ROC-AUC | 0.7494 |
+| Average precision | 0.3693 |
+| Precision | 0.3360 |
+| Recall | 0.6227 |
+| F1 score | 0.4365 |
+
+## High-risk threshold
+
+Predicted cancellation probability >= 0.5582.
+
+## Appropriate use
+
+- Prioritize low-cost confirmation or modification options.
+- Prioritize high-risk bookings for retention review.
+- Support property × arrival-date expected-completed-stay forecasting.
+
+## Inappropriate use
+
+- Automatic booking denial.
+- Automatic penalties.
+- Broad incentives for every flagged booking.
+- Treating feature importance as causal proof.
+
+## Known limitations
+
+- Predicts whether, not when, a cancellation may occur.
+- Predictive associations are not causal.
+- Performance may drift as properties, channels, pricing, or external-score methods change.
+- Intervention effectiveness must be tested in randomized or phased pilots.
+
+## Monitoring
+
+Monitor monthly:
+
+- ROC-AUC and average precision.
+- Calibration by risk tier.
+- Missingness and unseen-category rates.
+- Cancellation rate by risk tier.
+- Customer opt-outs, complaints, offer cost, and incremental completed stays.
