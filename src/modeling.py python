@@ -1,0 +1,214 @@
+import numpy as np
+import pandas as pd
+
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
+
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    average_precision_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score
+)
+from sklearn.model_selection import (
+    StratifiedKFold,
+    train_test_split
+)
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import (
+    OneHotEncoder,
+    StandardScaler
+)
+
+
+RANDOM_STATE = 42
+TARGET = "cancelled_flag"
+
+
+def split_data(
+    df: pd.DataFrame,
+    features: list[str],
+    target: str = TARGET,
+    random_state: int = RANDOM_STATE
+):
+    """Create 60% train, 20% validation, and 20% untouched test sets."""
+    X = df[features].copy()
+    y = df[target].copy()
+
+    X_dev, X_test, y_dev, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.20,
+        stratify=y,
+        random_state=random_state
+    )
+
+    X_train, X_valid, y_train, y_valid = train_test_split(
+        X_dev,
+        y_dev,
+        test_size=0.25,
+        stratify=y_dev,
+        random_state=random_state
+    )
+
+    return X_train, X_valid, X_test, y_train, y_valid, y_test
+
+
+def identify_feature_types(X: pd.DataFrame):
+    """Identify numeric and categorical feature columns."""
+    numeric_features = X.select_dtypes(
+        include=["number", "bool"]
+    ).columns.tolist()
+
+    categorical_features = X.select_dtypes(
+        include=["object", "string", "category"]
+    ).columns.tolist()
+
+    return numeric_features, categorical_features
+
+
+def build_preprocessors(
+    numeric_features: list[str],
+    categorical_features: list[str]
+):
+    """Create LASSO and tree-model preprocessing transformers."""
+    categorical_pipeline = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore"))
+    ])
+
+    numeric_lasso = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler())
+    ])
+
+    numeric_tree = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median"))
+    ])
+
+    lasso_preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_lasso, numeric_features),
+            ("cat", categorical_pipeline, categorical_features)
+        ],
+        remainder="drop"
+    )
+
+    tree_preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_tree, numeric_features),
+            ("cat", categorical_pipeline, categorical_features)
+        ],
+        remainder="drop"
+    )
+
+    return lasso_preprocessor, tree_preprocessor
+
+
+def build_lasso_pipeline(lasso_preprocessor):
+    """Create L1 logistic regression pipeline with in-fold SMOTE."""
+    model = LogisticRegression(
+        penalty="l1",
+        solver="saga",
+        max_iter=10000,
+        random_state=RANDOM_STATE
+    )
+
+    return ImbPipeline(steps=[
+        ("preprocessor", lasso_preprocessor),
+        ("smote", SMOTE(random_state=RANDOM_STATE)),
+        ("model", model)
+    ])
+
+
+def get_cv(n_splits: int = 5):
+    """Return stratified cross-validation strategy."""
+    return StratifiedKFold(
+        n_splits=n_splits,
+        shuffle=True,
+        random_state=RANDOM_STATE
+    )
+
+
+def choose_threshold_by_f1(
+    y_true,
+    probabilities
+):
+    """Select the threshold that maximizes F1 score."""
+    thresholds = np.arange(0.05, 0.96, 0.01)
+    rows = []
+
+    for threshold in thresholds:
+        predictions = (probabilities >= threshold).astype(int)
+
+        rows.append({
+            "threshold": threshold,
+            "precision": precision_score(
+                y_true,
+                predictions,
+                zero_division=0
+            ),
+            "recall": recall_score(
+                y_true,
+                predictions,
+                zero_division=0
+            ),
+            "f1": f1_score(
+                y_true,
+                predictions,
+                zero_division=0
+            ),
+            "flagged_percent": predictions.mean() * 100
+        })
+
+    results = pd.DataFrame(rows)
+    best = results.loc[results["f1"].idxmax()]
+
+    return best, results
+
+
+def evaluate_probabilities(
+    y_true,
+    probabilities,
+    threshold
+):
+    """Return standard classification metrics at a chosen threshold."""
+    predictions = (probabilities >= threshold).astype(int)
+
+    return {
+        "roc_auc": roc_auc_score(y_true, probabilities),
+        "average_precision": average_precision_score(
+            y_true,
+            probabilities
+        ),
+        "precision": precision_score(
+            y_true,
+            predictions,
+            zero_division=0
+        ),
+        "recall": recall_score(
+            y_true,
+            predictions,
+            zero_division=0
+        ),
+        "f1": f1_score(
+            y_true,
+            predictions,
+            zero_division=0
+        )
+    }
+
+
+def create_risk_tier(probability: float) -> str:
+    """Map a cancellation probability to a proposed operational tier."""
+    if probability < 0.30:
+        return "Low"
+    if probability < 0.5582:
+        return "Moderate"
+    if probability < 0.70:
+        return "High"
+    return "Very High"
